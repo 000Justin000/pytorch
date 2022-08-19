@@ -287,8 +287,8 @@ class RegisterDispatchKey:
         self, f: NativeFunction
     ) -> Union[NativeSignature, DispatcherSignature]:
         # The prefix is just to ensure uniqueness. The Dispatcher API doesn't guarantee unique kernel names.
-        return kernel_signature(
-            f, self.backend_index, prefix=f"wrapper_{f.func.name.overload_name}_"
+        return DispatcherSignature.from_schema(
+            f.func, prefix=f"wrapper_{f.func.name.overload_name}_"
         )
 
     def gen_out_inplace_wrapper(
@@ -451,7 +451,14 @@ return {sig.name()}({', '.join(e.expr for e in translate(cpp_sig.arguments(), si
                 else:
                     impl_name = f"{metadata.cpp_namespace}::{self.class_method_name}::{metadata.kernel}"
 
-                args_exprs_str = ", ".join(a.name for a in args)
+                kernel_sig = kernel_signature(f, self.backend_index)
+
+                args_exprs_str = ", ".join(
+                    e.expr
+                    for e in translate(
+                        sig.arguments(), kernel_sig.arguments(), method=False
+                    )
+                )
 
                 device_check = "  // No device check\n"
                 # Backends that require device guards presumably also require device checks.
@@ -741,7 +748,9 @@ resize_out(out, sizes, strides, options);
         )
 
         # Signature of the wrapper function we'll register to the dispatcher
-        sig = NativeSignature(f.func, prefix="wrapper_")
+        sig = NativeSignature(
+            f.func, prefix="wrapper_", symint=self.backend_index.symint
+        )
 
         if self.target is Target.NAMESPACED_DECLARATION:
             result = f"TORCH_API {cpp_sig_group.signature.decl()};\n"
