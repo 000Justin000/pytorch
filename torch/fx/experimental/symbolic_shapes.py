@@ -18,6 +18,19 @@ __all__ = [
 
 SYM_FUNCTION_MODE = None
 
+math_lib = torch.library.Library("math", "DEF")
+
+math_lib.define("mul(int a, int b) -> int")
+math_lib.define("eq(int a, int b) -> bool")
+math_lib.define("gt(int a, int b) -> bool")
+math_lib.define("lt(int a, int b) -> bool")
+
+math_lib.impl("mul", lambda a, b: a * b, "Undefined")
+math_lib.impl("eq", lambda a, b: a == b, "Undefined")
+math_lib.impl("gt", lambda a, b: a > b, "Undefined")
+math_lib.impl("lt", lambda a, b: a < b, "Undefined")
+
+
 # We don't bother with the metaclass as all of the dispatching logic happens
 # entirely from Python
 #
@@ -124,7 +137,7 @@ class PySymInt(object):
         return PySymInt(sympy.Integer(num), self.shape_env, constant=num)
 
     def __str__(self):
-        return f"PySymInt({self.expr})"
+        return f"{self.expr}"
 
     # Today we error on calling int on a symbolic shape, as this is a very accessible footgun.
     # In the future we'll probably need some explicit way of allowing this
@@ -183,7 +196,7 @@ class ShapeEnv(object):
         # Currently we don't put 0/1 specialization in guards but perhaps we should
         if val == 0 or val == 1:
             return val
-        sympy_expr = sympy.Symbol(name, positive=True)
+        sympy_expr = sympy.Symbol(name, positive=True, integer=True)
         py_sym_int = PySymInt(sympy_expr, self)
         cpp_sym_int = torch._C.SymIntNode.new_symint(py_sym_int)  # type: ignore[attr-defined]
         shape_env[sympy_expr] = val
@@ -191,7 +204,7 @@ class ShapeEnv(object):
 
     def try_constantify(self, expr):
         # Simplifies assuming that shape vars > 1 (since we cache on 0/1 shape values)
-        new_shape_env = {k: sympy.Symbol(f'shape_{idx}', positive=True) + 1 for idx, k in enumerate(self.shape_env.keys())}
+        new_shape_env = {k: sympy.Symbol(f'shape_{idx}', positive=True, integer=True) + 1 for idx, k in enumerate(self.shape_env.keys())}
         new_expr = expr.subs(new_shape_env)
         new_expr = new_expr.simplify()
         if len(list(new_expr.free_symbols)) == 0:
